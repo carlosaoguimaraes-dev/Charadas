@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advinha-me | Jogo de Charadas</title>
+    <!-- Carrega o Tailwind CSS para um estilo moderno e responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carrega o Tone.js para geração de áudio programática (sem ficheiros externos) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Configuração do Tailwind para usar a fonte Inter e cores personalizadas -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        // Cores base ligeiramente ajustadas para o gradiente
+                        'roxo-equipa1': '#7C3AED', // Base Roxo
+                        'azul-equipa2': '#0EA5E9', // Base Azul
+                        'verde-acerto': '#10B981', // Verde acerto
+                        'vermelho-passar': '#EF4444', // Vermelho desistência
+                        'amarelo-medio': '#F59E0B', // Amarelo médio
+                        'roxo-claro': '#9333ea', // Para gradiente 1
+                        'azul-claro': '#38bdf8', // Para gradiente 2
+                    },
+                    keyframes: {
+                        pulseColor: {
+                            '0%, 100%': { opacity: 1 },
+                            '50%': { opacity: 0.5 },
+                        },
+                        confetti: {
+                            '0%': { transform: 'translateY(-100vh) rotate(0deg)', opacity: 0 },
+                            '100%': { transform: 'translateY(100vh) rotate(720deg)', opacity: 1 },
+                        }
+                    },
+                    animation: {
+                        pulseColor: 'pulseColor 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        confetti: 'confetti 5s ease-out forwards',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Estilos básicos para garantir que a aplicação ocupa todo o ecrã e usa a fonte */
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f3f4f6;
+            overflow: hidden; /* Evita barras de rolagem estranhas */
+        }
+        /* Estilo para os botões principais - Efeito 3D */
+        .game-button {
+            transition: all 0.1s ease-out;
+            box-shadow: 0 6px 0 0 rgba(0, 0, 0, 0.2);
+            transform: translateY(0);
+        }
+        .game-button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.2);
+        }
+
+        /* Estilos para o fundo das telas dos jogadores (Gradiente animado) */
+        .player-screen.p1 {
+            background: linear-gradient(-45deg, #7C3AED, #9333ea, #a855f7);
+            background-size: 400% 400%;
+            animation: gradientP1 15s ease infinite;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        .player-screen.p2 {
+            background: linear-gradient(-45deg, #0EA5E9, #38bdf8, #06b6d4);
+            background-size: 400% 400%;
+            animation: gradientP2 15s ease infinite;
+            min-height: 100vh;
+            width: 100%;
+        }
+
+        @keyframes gradientP1 {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes gradientP2 {
+            0% { background-position: 100% 50%; }
+            50% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        /* Estilo para a caixa de palavra em jogo */
+        .word-card {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Confetes para a tela final */
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #fff;
+            opacity: 0;
+            border-radius: 50%;
+        }
+
+    </style>
+</head>
+<body class="p-0 m-0">
+
+    <!-- Contentor principal do jogo -->
+    <div id="game-container" class="w-full h-screen flex items-center justify-center">
+        <!-- O conteúdo será injetado aqui pelo JavaScript -->
+    </div>
+
+    <script>
+        // ======================================================================
+        // 1. BASE DE DADOS DE PALAVRAS (Sem alterações)
+        // ======================================================================
+
+        const wordDatabase = {
+            easy: [
+                'Cão', 'Gato', 'Mesa', 'Cadeira', 'Dormir', 'Comer', 'Correr', 
+                'Telemóvel', 'Sol', 'Chuva', 'Bicicleta', 'Pão', 'Escovar', 'Bola',
+                'Porta', 'Janela', 'Rir', 'Chorar', 'Pintar', 'Lavar', 'Futebol', 
+                'Carro', 'Água', 'Livro', 'Flor', 'Saltar', 'Nadar', 'Beber',
+                'Ténis', 'Avião', 'Pássaro', 'Peixe', 'Casa', 'Roupa', 'Cozinhar'
+            ],
+            medium: [
+                'Astronauta', 'Guitarra', 'Baleia', 'Elefante', 'Computador', 'Piano', 
+                'Escultura', 'Fotografar', 'Dançar Tango', 'Montanha-Russa', 'Bibliotecário', 
+                'Chef de Cozinha', 'Desenhador', 'Arco-íris', 'Vulcão', 'Supermercado',
+                'Estátua da Liberdade', 'Faraó', 'Sereia', 'Robô', 'Máquina de Lavar',
+                'Vassoura', 'Espelho', 'Bandeira', 'Chave de Fendas', 'Escalada',
+                'Xadrez', 'Microfone', 'Ballet', 'Mágico', 'Jardineiro', 'Surf'
+            ],
+            hard: [
+                'Paradoxo', 'Globalização', 'Hipótese', 'Filosofia', 'Economia', 
+                'Eletricidade Estática', 'Quântica', 'Renascimento', 'Existencialismo',
+                'Desenho Animado Japonês', 'Sinfonia', 'Ato de Contrição', 
+                'Teatro Musical', 'Melancolia', 'Impressionismo', 'Direito de Autor', 
+                'Inteligência Artificial', 'Navegação Estelar', 'Arquitetura Gótica',
+                'Neurociência', 'Transparência', 'Consciência', 'Dilema', 'Inovação'
+            ]
+        };
+
+        // ======================================================================
+        // 2. VARIÁVEIS GLOBAIS E ESTADO DO JOGO
+        // ======================================================================
+
+        const TOTAL_ROUNDS = 10;
+        // NOVA CONSTANTE: Duração da fase de urgência em segundos
+        const URGENCY_TIME = 20; 
+
+        let gameState = {
+            currentPage: 'menu',
+            timeSelection: 60, // Padrão 1 minuto
+            currentRound: 1,
+            currentPlayer: 1, // 1 ou 2
+            score: { team1: 0, team2: 0 },
+            timer: null,
+            timeRemaining: 0,
+            currentWord: null, // A dificuldade da palavra escolhida (easy, medium, hard)
+            usedWords: { easy: new Set(), medium: new Set(), hard: new Set() }
+        };
+
+        // ======================================================================
+        // 3. FUNÇÕES DE ÁUDIO (Tone.js) - APENAS TICK DE URGÊNCIA
+        // ======================================================================
+        
+        let audioContextStarted = false;
+        let tickSynth = null;
+        let tickInterval = null;
+
+        // Synth simples para o tick de urgência (tom baixo)
+        const initAudioSynths = () => {
+            if (!tickSynth) {
+                // Configuração para o som de tick de urgência
+                tickSynth = new Tone.MembraneSynth({
+                    "envelope": {
+                        "attack": 0.005,
+                        "decay": 0.1,
+                        "sustain": 0.0,
+                        "release": 0.1
+                    },
+                    "pitchDecay": 0.05
+                }).toDestination();
+            }
+        };
+
+        // Função para iniciar o contexto de áudio (necessário em navegadores)
+        async function startAudioContext() {
+            if (!audioContextStarted) {
+                try {
+                    await Tone.start();
+                    console.log("Contexto de áudio iniciado.");
+                    audioContextStarted = true;
+                    initAudioSynths();
+                } catch (e) {
+                    console.error("Erro ao iniciar o contexto de áudio:", e);
+                }
+            }
+        }
+
+        // NOVO: Função para iniciar o som de urgência (tick rápido)
+        function startUrgencyTick() {
+            if (!audioContextStarted) return;
+            if (tickInterval) clearInterval(tickInterval);
+            
+            // Toca um tick baixo e rápido
+            tickInterval = setInterval(() => {
+                // C3 é uma nota mais baixa para urgência
+                tickSynth.triggerAttackRelease("C3", "32n"); 
+
+                // Para o loop se o tempo acabar
+                if (gameState.timeRemaining <= 0) {
+                    stopTickSound();
+                }
+            }, 300); // Toca a cada 300ms
+        }
+
+        function stopTickSound() {
+            if (tickInterval) {
+                clearInterval(tickInterval);
+                tickInterval = null;
+            }
+        }
+
+        // ======================================================================
+        // 4. FUNÇÕES DE UTILIDADE E LÓGICA (Sem Alterações)
+        // ======================================================================
+
+        function getNewWords() {
+            const selectWord = (difficulty) => {
+                const availableWords = wordDatabase[difficulty].filter(word => !gameState.usedWords[difficulty].has(word));
+                if (availableWords.length === 0) {
+                    gameState.usedWords[difficulty].clear();
+                    return wordDatabase[difficulty][Math.floor(Math.random() * wordDatabase[difficulty].length)];
+                }
+                const index = Math.floor(Math.random() * availableWords.length);
+                const word = availableWords[index];
+                gameState.usedWords[difficulty].add(word);
+                return word;
+            };
+
+            return {
+                easy: selectWord('easy'),
+                medium: selectWord('medium'),
+                hard: selectWord('hard')
+            };
+        }
+
+        function getScoreForDifficulty(difficulty) {
+            switch (difficulty) {
+                case 'easy': return 1;
+                case 'medium': return 2;
+                case 'hard': return 3;
+                default: return 0;
+            }
+        }
+
+        function formatTime(totalSeconds) {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        // ======================================================================
+        // 5. MUDANÇAS DE PÁGINA E ESTADO (Lógica do Timer Atualizada)
+        // ======================================================================
+
+        function goToMenu() {
+            stopTickSound(); 
+            const savedTime = gameState.timeSelection;
+            gameState = {
+                currentPage: 'menu',
+                timeSelection: savedTime,
+                currentRound: 1,
+                currentPlayer: 1,
+                score: { team1: 0, team2: 0 },
+                timer: null,
+                timeRemaining: 0,
+                currentWord: null,
+                usedWords: { easy: new Set(), medium: new Set(), hard: new Set() }
+            };
+            renderMenu();
+        }
+
+        function startGame() {
+            // Chamamos startAudioContext no primeiro clique para iniciar o áudio
+            startAudioContext(); 
+            gameState.currentPage = 'playerSelect';
+            renderPlayerSelectScreen();
+        }
+
+        function startTimer() {
+            const countdownDisplay = document.getElementById('countdown-timer');
+            gameState.timeRemaining = gameState.timeSelection;
+            countdownDisplay.textContent = formatTime(gameState.timeRemaining);
+            
+            // Variável para rastrear se o som de urgência já está ativo
+            let isUrgencyActive = false; 
+
+            gameState.timer = setInterval(() => {
+                gameState.timeRemaining--;
+                countdownDisplay.textContent = formatTime(gameState.timeRemaining);
+                
+                // Lógica de Urgência (20 Segundos)
+                if (gameState.timeRemaining <= URGENCY_TIME) {
+                    // Lógica visual
+                    countdownDisplay.classList.add('text-red-400', 'animate-pulseColor');
+
+                    // Lógica Sonora: Inicia o tick rápido na primeira vez
+                    if (!isUrgencyActive) {
+                        startUrgencyTick();
+                        isUrgencyActive = true;
+                    }
+                } else {
+                    // Remove animação visual se o tempo ainda for alto
+                    countdownDisplay.classList.remove('text-red-400', 'animate-pulseColor');
+                }
+
+                if (gameState.timeRemaining <= 0) {
+                    clearInterval(gameState.timer);
+                    gameState.timer = null;
+                    stopTickSound();
+                    handleEndRound(false);
+                }
+            }, 1000);
+        }
+
+        function handleEndRound(success) {
+            stopTickSound();
+
+            if (gameState.timer) {
+                clearInterval(gameState.timer);
+                gameState.timer = null;
+            }
+
+            let pointsAwarded = 0;
+            if (success) {
+                pointsAwarded = getScoreForDifficulty(gameState.currentWord);
+                const currentTeam = `team${gameState.currentPlayer}`;
+                gameState.score[currentTeam] += pointsAwarded;
+            }
+
+            gameState.currentPage = 'scoreSummary';
+            renderScoreSummary(success, pointsAwarded);
+        }
+
+        function nextRound() {
+            const nextPlayer = gameState.currentPlayer === 1 ? 2 : 1;
+
+            if (nextPlayer === 1) {
+                gameState.currentRound++;
+            }
+
+            if (gameState.currentRound > TOTAL_ROUNDS) {
+                renderEndGameScreen();
+                return;
+            }
+
+            gameState.currentPlayer = nextPlayer;
+            gameState.currentPage = 'playerSelect';
+            renderPlayerSelectScreen();
+        }
+
+        // ======================================================================
+        // 6. FUNÇÕES DE RENDERIZAÇÃO
+        // ======================================================================
+
+        const container = document.getElementById('game-container');
+
+        /**
+         * Renderiza o Menu Inicial.
+         */
+        function renderMenu() {
+            let timeButtons = [60, 120, 180].map(time => {
+                const isSelected = gameState.timeSelection === time;
+                const baseClass = isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 border border-gray-300';
+                return `
+                    <button onclick="setTime(${time})"
+                        class="game-button px-5 py-3 font-bold rounded-xl ${baseClass} shadow-lg hover:shadow-xl transition duration-150">
+                        ${time / 60} Minuto${time > 60 ? 's' : ''}
+                    </button>
+                `;
+            }).join('');
+
+            container.className = 'w-full max-w-lg mx-auto p-4 md:p-8';
+            container.innerHTML = `
+                <div class="text-center bg-white p-10 rounded-3xl shadow-[0_15px_30px_rgba(0,0,0,0.1)] border border-gray-100 transform hover:scale-[1.01] transition-transform duration-300">
+                    <h1 class="text-6xl font-extrabold text-indigo-700 mb-2 tracking-tighter">Advinha-me</h1>
+                    <p class="text-xl text-gray-500 mb-10">O Jogo de Charadas Digital</p>
+
+                    <div class="mb-10 p-5 bg-indigo-50 rounded-2xl border border-indigo-200">
+                        <h2 class="text-xl font-bold text-indigo-800 mb-4">⏰ Tempo por Ronda</h2>
+                        <div class="flex justify-center space-x-3">
+                            ${timeButtons}
+                        </div>
+                    </div>
+
+                    <button onclick="startGame()"
+                        class="game-button w-full bg-verde-acerto text-white text-2xl font-black py-4 rounded-xl shadow-[0_6px_0_0_#065f46] hover:bg-green-600 focus:ring-4 focus:ring-green-300">
+                        <span class="mr-2">🚀</span> INICIAR JOGO
+                    </button>
+                </div>
+            `;
+        }
+
+        /**
+         * Renderiza a tela de seleção de palavras para o Jogador atual.
+         */
+        function renderPlayerSelectScreen() {
+            const isPlayer1 = gameState.currentPlayer === 1;
+            const bgColorClass = isPlayer1 ? 'p1' : 'p2';
+            const words = getNewWords();
+            
+            container.className = `player-screen ${bgColorClass} w-full mx-auto flex flex-col items-center justify-center p-4 text-white`;
+            
+            container.innerHTML = `
+                <div class="w-full max-w-lg">
+                    <div class="flex justify-between items-center mb-10 p-3 rounded-xl bg-black bg-opacity-10 backdrop-blur-sm shadow-xl">
+                        <button onclick="goToMenu()" 
+                            class="game-button bg-white text-gray-800 px-4 py-2 rounded-lg text-sm hover:bg-gray-200 shadow-md">
+                            <span class="text-xl">🏠</span> Menu
+                        </button>
+                        <div class="text-center">
+                            <p class="text-xl font-bold">Ronda</p>
+                            <span class="text-3xl font-extrabold">${gameState.currentRound} / ${TOTAL_ROUNDS}</span>
+                        </div>
+                    </div>
+
+                    <h2 class="text-5xl font-extrabold text-center mb-6 drop-shadow-lg">
+                        Equipa ${gameState.currentPlayer}
+                    </h2>
+                    <p class="text-xl text-center mb-10 font-light opacity-90">
+                        Escolha a dificuldade da próxima Charada:
+                    </p>
+
+                    <div class="space-y-6">
+                        ${renderWordButton(words.easy, 'easy', 'FÁCIL', 'bg-verde-acerto', 'shadow-[0_6px_0_0_#065f46]', '1 Ponto')}
+                        ${renderWordButton(words.medium, 'medium', 'MÉDIO', 'bg-amarelo-medio', 'shadow-[0_6px_0_0_#b45309]', '2 Pontos')}
+                        ${renderWordButton(words.hard, 'hard', 'DIFÍCIL', 'bg-vermelho-passar', 'shadow-[0_6px_0_0_#991b1b]', '3 Pontos')}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Helper para renderizar os botões de seleção de palavra.
+         */
+        function renderWordButton(word, difficulty, label, bgColor, shadowClass, points) {
+            return `
+                <button onclick="startRound('${difficulty}', '${word}')"
+                    class="game-button w-full ${bgColor} text-white py-7 rounded-xl text-2xl font-extrabold flex justify-between items-center px-8 transition-transform transform hover:scale-[1.01] ${shadowClass}">
+                    <span class="text-base font-normal opacity-90">${label} (${points})</span>
+                    <span class="text-4xl tracking-wider">${word.toUpperCase()}</span>
+                    <span class="text-xl">▶️</span>
+                </button>
+            `;
+        }
+
+        /**
+         * Prepara e renderiza a tela de Jogo (Charada em Andamento).
+         */
+        function startRound(difficulty, word) {
+            gameState.currentPage = 'inRound';
+            gameState.currentWord = difficulty;
+            
+            const isPlayer1 = gameState.currentPlayer === 1;
+            const bgColorClass = isPlayer1 ? 'p1' : 'p2';
+
+            container.className = `player-screen ${bgColorClass} w-full mx-auto flex flex-col items-center justify-center p-4 text-white`;
+            
+            container.innerHTML = `
+                <div class="w-full max-w-lg flex flex-col items-center">
+                    <div class="text-center mb-10">
+                        <h3 class="text-xl font-semibold opacity-75">Equipa ${gameState.currentPlayer} | Charada ${getScoreForDifficulty(difficulty)} Ponto${getScoreForDifficulty(difficulty) > 1 ? 's' : ''}</h3>
+                        <h1 id="countdown-timer" class="text-9xl font-black mt-4 drop-shadow-xl transition-colors duration-500">
+                            ${formatTime(gameState.timeSelection)}
+                        </h1>
+                    </div>
+
+                    <div class="word-card bg-white text-gray-800 p-10 rounded-3xl w-full text-center mb-16 border-4 border-dashed border-indigo-400">
+                        <p class="text-2xl font-bold mb-3 text-gray-500">A TUA PALAVRA É:</p>
+                        <p class="text-6xl font-extrabold text-indigo-700 tracking-wider">${word.toUpperCase()}</p>
+                    </div>
+                    
+                    <div class="flex justify-around w-full max-w-md space-x-6">
+                        <button onclick="handleEndRound(true)"
+                            class="game-button flex-1 bg-verde-acerto text-white text-2xl font-bold py-5 rounded-xl shadow-[0_6px_0_0_#065f46] hover:bg-green-600">
+                            <span class="text-4xl">✅</span><br/>ACERTO
+                        </button>
+                        <button onclick="handleEndRound(false)"
+                            class="game-button flex-1 bg-vermelho-passar text-white text-2xl font-bold py-5 rounded-xl shadow-[0_6px_0_0_#991b1b] hover:bg-red-600">
+                            <span class="text-4xl">❌</span><br/>PASSAR
+                        </button>
+                    </div>
+                </div>
+            `;
+            startTimer();
+        }
+
+        /**
+         * Renderiza o resumo da pontuação após uma rodada.
+         */
+        function renderScoreSummary(success, points) {
+            const message = success 
+                ? `🎉 SUCESSO! Ganhos ${points} Ponto${points > 1 ? 's' : ''}!`
+                : (gameState.timeRemaining === 0 ? `⏰ TEMPO ESGOTADO! Sem pontos.` : `❌ DESISTÊNCIA. Sem pontos.`);
+            
+            const isPlayer1 = gameState.currentPlayer === 1;
+            const bgColorClass = isPlayer1 ? 'p1' : 'p2';
+
+            container.className = `player-screen ${bgColorClass} w-full mx-auto flex flex-col items-center justify-center p-4 text-white`;
+
+            container.innerHTML = `
+                <div class="w-full max-w-lg bg-white p-10 rounded-3xl shadow-[0_15px_30px_rgba(0,0,0,0.2)] text-center text-gray-800">
+                    <h2 class="text-4xl font-extrabold mb-4 text-indigo-700">FIM DA RONDA ${gameState.currentRound}</h2>
+                    <p class="text-2xl font-semibold mb-8 ${success ? 'text-verde-acerto' : 'text-vermelho-passar'}">${message}</p>
+
+                    <div class="grid grid-cols-2 gap-6 text-center mb-10">
+                        <div class="p-5 rounded-xl bg-gray-100 border-b-4 border-roxo-equipa1 shadow-lg">
+                            <p class="text-xl font-semibold text-roxo-equipa1">Equipa 1</p>
+                            <p class="text-6xl font-extrabold text-gray-800">${gameState.score.team1}</p>
+                        </div>
+                        <div class="p-5 rounded-xl bg-gray-100 border-b-4 border-azul-equipa2 shadow-lg">
+                            <p class="text-xl font-semibold text-azul-equipa2">Equipa 2</p>
+                            <p class="text-6xl font-extrabold text-gray-800">${gameState.score.team2}</p>
+                        </div>
+                    </div>
+
+                    <button onclick="nextRound()"
+                        class="game-button w-full bg-indigo-600 text-white text-2xl font-bold py-4 rounded-xl shadow-[0_6px_0_0_#3730a3] hover:bg-indigo-700">
+                        Próxima (Equipa ${gameState.currentPlayer === 1 ? 2 : 1}) →
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Função para gerar confetes (mantida para a celebração visual)
+        function createConfetti() {
+            const colors = ['#f59e0b', '#10b981', '#ef4444', '#6366f1', '#f97316'];
+            for (let i = 0; i < 50; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.left = `${Math.random() * 100}vw`;
+                confetti.style.top = `${Math.random() * 100}vh`;
+                confetti.style.animationDelay = `${Math.random() * 0.5}s`;
+                confetti.style.animationDuration = `${3 + Math.random() * 2}s`;
+                confetti.style.animationName = 'confetti';
+                confetti.style.width = `${5 + Math.random() * 10}px`;
+                confetti.style.height = confetti.style.width;
+                document.body.appendChild(confetti);
+                
+                // Remove-os após a animação para não sobrecarregar
+                setTimeout(() => confetti.remove(), 5000);
+            }
+        }
+
+
+        /**
+         * Renderiza a tela de celebração no final do jogo.
+         */
+        function renderEndGameScreen() {
+            const winner = gameState.score.team1 > gameState.score.team2 ? 1 : 
+                           gameState.score.team2 > gameState.score.team1 ? 2 : 0;
+            
+            const winnerMessage = winner === 0 
+                ? "EMPATE! Que jogo renhido!"
+                : `A GRANDE VENCEDORA É A EQUIPA ${winner}!`;
+            
+            const bgColorClass = winner === 1 ? 'p1' : (winner === 2 ? 'p2' : 'bg-gray-700');
+
+            container.className = `player-screen ${bgColorClass} w-full mx-auto flex flex-col items-center justify-center p-4 text-white`;
+            
+            if (winner !== 0) {
+                 createConfetti(); 
+            }
+
+            container.innerHTML = `
+                <div class="w-full max-w-lg bg-white p-12 rounded-3xl shadow-2xl text-center text-gray-800 animate-bounceOnce">
+                    <div class="text-8xl mb-6">${winner === 0 ? '🤝' : '🏆'}</div>
+                    <h2 class="text-5xl font-extrabold mb-4 text-indigo-700">FIM DO JOGO!</h2>
+                    <p class="text-3xl font-black mb-8 text-verde-acerto">${winnerMessage}</p>
+
+                    <div class="grid grid-cols-2 gap-6 text-center mb-10">
+                        <div class="p-5 rounded-xl bg-gray-100 border-b-4 border-roxo-equipa1 shadow-lg">
+                            <p class="text-xl font-semibold text-roxo-equipa1">Equipa 1</p>
+                            <p class="text-6xl font-extrabold text-gray-800">${gameState.score.team1}</p>
+                        </div>
+                        <div class="p-5 rounded-xl bg-gray-100 border-b-4 border-azul-equipa2 shadow-lg">
+                            <p class="text-xl font-semibold text-azul-equipa2">Equipa 2</p>
+                            <p class="text-6xl font-extrabold text-gray-800">${gameState.score.team2}</p>
+                        </div>
+                    </div>
+
+                    <button onclick="goToMenu()"
+                        class="game-button w-full bg-red-500 text-white text-2xl font-bold py-4 rounded-xl shadow-[0_6px_0_0_#991b1b] hover:bg-red-600">
+                        Novo Jogo
+                    </button>
+                </div>
+            `;
+        }
+        
+        // ======================================================================
+        // 7. INICIALIZAÇÃO
+        // ======================================================================
+
+        function setTime(timeSeconds) {
+            gameState.timeSelection = timeSeconds;
+            renderMenu();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            goToMenu(); 
+        });
+
+    </script>
+</body>
+</html>
